@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>3D Earth Simulator — Sun, Clouds & City Lights</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: black;
+      font-family: system-ui, sans-serif;
+    }
+    #info {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #ccc;
+      font-size: 13px;
+      opacity: 0.9;
+      z-index: 10;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+<div id="info">Visible Sun • Cloud Layer<br>Drag = rotate • Scroll = zoom</div>
+
+<!-- Three.js r124 (NO modules, sandbox-safe) -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.124.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.124.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+  console.assert(window.THREE, 'THREE failed to load');
+  console.assert(THREE.OrbitControls, 'OrbitControls failed to load');
+
+  // ===================== SCENE =====================
+  var scene = new THREE.Scene();
+
+  var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 5000);
+  camera.position.set(0, 1.6, 6);
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  document.body.appendChild(renderer.domElement);
+
+  var controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.enablePan = false;
+
+  // ===================== LIGHTING =====================
+
+  var sunLight = new THREE.DirectionalLight(0xffffff, 2.5);
+  scene.add(sunLight);
+  scene.add(new THREE.AmbientLight(0x111111));
+
+  // ===================== SUN (VISIBLE) =====================
+
+  var sun = new THREE.Mesh(
+    new THREE.SphereGeometry(1.2, 64, 64),
+    new THREE.MeshBasicMaterial({
+      map: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/sun.jpg')
+    })
+  );
+  scene.add(sun);
+
+  // ===================== EARTH =====================
+
+  var loader = new THREE.TextureLoader();
+
+  var earth = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 64, 64),
+    new THREE.MeshPhongMaterial({
+      map: loader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg'),
+      normalMap: loader.load('https://threejs.org/examples/textures/planets/earth_normal_2048.jpg')
+    })
+  );
+  earth.rotation.z = THREE.Math.degToRad(23.44);
+  scene.add(earth);
+
+  // ===================== CLOUD LAYER =====================
+
+  var clouds = new THREE.Mesh(
+    new THREE.SphereGeometry(1.04, 64, 64),
+    new THREE.MeshPhongMaterial({
+      map: loader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'),
+      transparent: true,
+      opacity: 0.75,
+      depthWrite: false
+    })
+  );
+  clouds.renderOrder = 2;
+  scene.add(clouds);
+
+  // ===================== CITY NIGHT LIGHTS (SAFE) =====================
+
+  var cityLights = new THREE.Mesh(
+    new THREE.SphereGeometry(1.002, 64, 64),
+    new THREE.MeshBasicMaterial({
+      map: loader.load('https://threejs.org/examples/textures/planets/earth_lights_2048.png'),
+      transparent: true,
+      opacity: 0.9
+    })
+  );
+  cityLights.renderOrder = 1;
+  scene.add(cityLights);
+
+  // ===================== STARS =====================
+
+  var starsGeo = new THREE.BufferGeometry();
+  var stars = new Float32Array(10000 * 3);
+  for (var i = 0; i < stars.length; i++) stars[i] = (Math.random() - 0.5) * 3000;
+  starsGeo.setAttribute('position', new THREE.BufferAttribute(stars, 3));
+  scene.add(new THREE.Points(starsGeo, new THREE.PointsMaterial({ size: 0.7 })));
+
+  // ===================== ASTRONOMY =====================
+
+  // Simulated fast day/night cycle (15 seconds per full cycle)
+  var cycleStart = Date.now();
+  var CYCLE_DURATION = 15000; // ms
+
+  function updateSun() {
+    var elapsed = (Date.now() - cycleStart) % CYCLE_DURATION;
+    var angle = (elapsed / CYCLE_DURATION) * Math.PI * 2;
+
+    var x = Math.cos(angle) * 10;
+    var z = Math.sin(angle) * 10;
+
+    sun.position.set(x, 0, z);
+    sunLight.position.copy(sun.position);
+
+    // Smooth city-light fade based on sun angle
+    // dayFactor: 1 = full day, 0 = full night
+    var dayFactor = THREE.Math.clamp((x / 10 + 1) / 2, 0, 1);
+    // Lights strongest at night, fade smoothly at dawn/dusk
+    cityLights.material.opacity = Math.pow(1 - dayFactor, 1.5);
+  }
+
+  // ===================== RESIZE =====================
+
+  window.addEventListener('resize', function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // ===================== LOOP =====================
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    earth.rotation.y += 0.0007;
+    clouds.rotation.y += 0.0009;
+
+    // Earth stays centered (Sun moves instead)
+    earth.position.set(0, 0, 0);
+    clouds.position.copy(earth.position);
+    cityLights.position.copy(earth.position);
+    
+
+    updateSun();
+
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  animate();
+</script>
+</body>
+</html>
